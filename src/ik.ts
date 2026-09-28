@@ -134,14 +134,19 @@ export function solveTwoBoneIk(
   const rootToEnd = endPos.clone().sub(rootPos);
   const rootToMiddle = middlePos.clone().sub(rootPos);
   let endDir = target.clone().sub(rootPos);
+  const targetAtRoot = endDir.lengthSq() < AXIS_EPSILON * AXIS_EPSILON;
   if (endDir.lengthSq() < AXIS_EPSILON * AXIS_EPSILON) {
     endDir = rootToEnd.lengthSq() >= AXIS_EPSILON * AXIS_EPSILON ? rootToEnd : rootToMiddle;
   }
   endDir.normalize();
 
-  let bendSide = perpendicularContribution(rootPos, bend, endDir)
-    ?? perpendicularContribution(rootPos, middlePos, endDir)
-    ?? perpendicularContribution(middlePos, endPos, endDir)
+  let bendSide = (targetAtRoot
+    ? perpendicularContribution(rootPos, middlePos, endDir)
+      ?? perpendicularContribution(middlePos, endPos, endDir)
+      ?? perpendicularContribution(rootPos, bend, endDir)
+    : perpendicularContribution(rootPos, bend, endDir)
+      ?? perpendicularContribution(rootPos, middlePos, endDir)
+      ?? perpendicularContribution(middlePos, endPos, endDir))
     ?? stablePerpendicular(endDir);
   bendSide = bendSide.normalize();
 

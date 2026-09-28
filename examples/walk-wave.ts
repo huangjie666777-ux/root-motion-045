@@ -1,97 +1,75 @@
 /**
- * 实际示例：人形角色行走（循环基础层）叠加右臂挥手（遮罩覆盖层），
- * 打印混合后的局部/世界姿态与 CPU 蒙皮变形顶点。
+ * 完整示例：角色用 loop 根行走向前推进，叠加右臂局部挥手覆盖层；
+ * IK 目标固定在世界空间，推进后仍将右手贴合到该目标，并输出世界蒙皮顶点。
  * 运行：npm run example
  */
 import {
+  RootMotionPlayer,
   Skeleton,
-  evaluatePose,
-  skinVertices,
-  solveTwoBoneIk,
+  skinVerticesToWorld,
+  solveWorldTwoBoneIk,
   type SkinInfluence,
   type Vec3,
 } from '../src/index.js';
-import { humanoidBones, walkClip, waveClip } from '../test/helpers.js';
+import { humanoidBones, straightRootWalkClip, waveClip } from '../test/helpers.js';
 
 const skeleton = new Skeleton(humanoidBones());
-const walk = walkClip();
-const wave = waveClip();
-
-const TIME = 1.3; // 秒：walk 循环内 0.3s，wave 循环内 0.5s
-
-const pose = evaluatePose(
+const player = new RootMotionPlayer({
   skeleton,
-  { clip: walk, time: TIME, loop: 'loop' },
-  { clip: wave, time: TIME, loop: 'loop', strength: 1, mask: { 'arm.R': 1 } },
-);
+  clip: straightRootWalkClip(),
+  rootBoneId: 'hips',
+  loop: 'loop',
+  overlay: {
+    clip: waveClip(),
+    time: 0,
+    loop: 'loop',
+    strength: 1,
+    mask: { 'arm.R': 1 },
+  },
+});
+
+const worldTarget: Vec3 = [1.3, 1.35, 0];
+const worldBend: Vec3 = [1.25, 2.1, 0.12];
 
 const fmt = (v: readonly number[]) => v.map((n) => n.toFixed(4)).join(', ');
+console.log('=== 固定世界 IK 目标 ===');
+console.log('target:      [' + fmt(worldTarget) + ']');
+console.log('bend ref:    [' + fmt(worldBend) + ']');
 
-console.log('=== 混合局部姿态 (t=' + TIME + 's, walk+wave@arm.R) ===');
-for (const id of skeleton.evalOrder) {
-  const t = pose.localPose.get(id)!;
-  console.log(
-    id.padEnd(7),
-    'T[' + fmt(t.translation) + ']',
-    'R[' + fmt(t.rotation) + ']',
-    'S[' + fmt(t.scale) + ']',
+for (const dt of [0.75, 0.5]) {
+  const frame = player.advance(dt);
+  const ik = solveWorldTwoBoneIk(skeleton, frame.localPose, {
+    rootJointId: 'spine',
+    middleJointId: 'arm.R',
+    endJointId: 'hand.R',
+    target: worldTarget,
+    bendReference: worldBend,
+    weight: 1,
+    characterTransform: frame.characterTransform,
+  });
+  const vertices: Vec3[] = [
+    [0.55, 1.35, 0],
+    [0, 1.25, 0],
+    [9, 9, 9],
+  ];
+  const weights: SkinInfluence[][] = [
+    [{ boneId: 'hand.R', weight: 1 }],
+    [{ boneId: 'hips', weight: 1 }, { boneId: 'spine', weight: 1 }],
+    [],
+  ];
+  const worldVertices = skinVerticesToWorld(
+    skeleton,
+    vertices,
+    weights,
+    ik.worldMatrices,
+    frame.characterTransform,
   );
-}
 
-console.log('\n=== 关键骨骼世界位置 ===');
-for (const id of ['hips', 'hand.L', 'hand.R', 'leg.L', 'leg.R']) {
-  const e = pose.worldMatrices.get(id)!.elements;
-  console.log(id.padEnd(7), 'pos[' + fmt([e[12], e[13], e[14]]) + ']');
-}
-
-// 对比：纯行走（无覆盖）的右手位置，验证挥手生效且腿部不受影响。
-const pureWalk = evaluatePose(skeleton, { clip: walk, time: TIME, loop: 'loop' });
-const handR = (p: typeof pose) => {
-  const e = p.worldMatrices.get('hand.R')!.elements;
-  return [e[12], e[13], e[14]] as const;
-};
-console.log('\nhand.R 世界位置  纯行走: [' + fmt(handR(pureWalk)) + ']  叠加挥手: [' + fmt(handR(pose)) + ']');
-
-// 在混合姿态之后执行右臂两骨骼 IK：spine -> arm.R -> hand.R。
-// 目标与弯曲参考点都是角色空间坐标；求解只改变 spine 和 arm.R 的局部旋转。
-const ikTarget: Vec3 = [0.52, 1.12, 0.2];
-const ikBendReference: Vec3 = [0.2, 1.65, 0.05];
-const ik = solveTwoBoneIk(skeleton, pose.localPose, {
-  rootJointId: 'spine',
-  middleJointId: 'arm.R',
-  endJointId: 'hand.R',
-  target: ikTarget,
-  bendReference: ikBendReference,
-  weight: 1,
-});
-const ikHand = (() => {
-  const e = ik.worldMatrices.get('hand.R')!.elements;
-  return [e[12], e[13], e[14]] as const;
-})();
-console.log('\n=== 右手 IK 贴合 ===');
-console.log('目标:       [' + fmt(ikTarget) + ']');
-console.log('IK 后末端: [' + fmt(ikHand) + ']');
-console.log('可达:', ik.reachable, ' 距离:', ik.distanceToTarget.toFixed(6));
-
-// 简单网格：右手一个顶点 + 脊柱处一个双骨骼顶点 + 零权重顶点。
-const vertices: Vec3[] = [
-  [0.55, 1.35, 0],   // 右手绑定位置
-  [0, 1.25, 0],      // 脊柱附近
-  [9, 9, 9],         // 零权重，应保持不动
-];
-const weights: SkinInfluence[][] = [
-  [{ boneId: 'hand.R', weight: 1 }],
-  [{ boneId: 'hips', weight: 2 }, { boneId: 'spine', weight: 2 }], // 非归一，内部归一化
-  [],
-];
-const deformed = skinVertices(skeleton, vertices, weights, pose.worldMatrices);
-const ikDeformed = skinVertices(skeleton, vertices, weights, ik.worldMatrices);
-console.log('\n=== 蒙皮变形顶点（角色局部空间） ===');
-for (let i = 0; i < vertices.length; i++) {
-  console.log(
-    'v' + i,
-    '绑定 [' + fmt(vertices[i]) + ']',
-    '混合 [' + fmt(deformed[i]) + ']',
-    'IK [' + fmt(ikDeformed[i]) + ']',
-  );
+  console.log('\n=== 推进 ' + dt + 's，累计 t=' + frame.time + 's ===');
+  console.log('角色位置:    [' + fmt(frame.characterTransform.position) + ']');
+  console.log('hips 局部 T: [' + fmt(frame.localPose.get('hips')!.translation) + '] (根运动不重复进姿态)');
+  console.log('世界末端:    [' + fmt(ik.actualWorldEndPosition) + ']');
+  console.log('可达:', ik.reachable, ' 残差:', ik.distanceToTarget.toFixed(8));
+  console.log('世界蒙皮顶点:');
+  worldVertices.forEach((p, i) => console.log('v' + i + ' [' + fmt(p) + ']'));
 }

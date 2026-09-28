@@ -1,7 +1,15 @@
+import type { Skeleton } from './skeleton.js';
+
 /** 三维向量，右手坐标系。 */
 export type Vec3 = readonly [number, number, number];
 /** 单位四元数，[x, y, z, w]。 */
 export type Quat = readonly [number, number, number, number];
+
+/** 无缩放刚体变换。 */
+export interface RigidTransform {
+  readonly position: Vec3;
+  readonly rotation: Quat;
+}
 
 /** 单根骨骼的绑定姿态定义（输入允许乱序）。 */
 export interface BoneSpec {
@@ -107,4 +115,37 @@ export interface TwoBoneIkResult {
   readonly actualEndPosition: Vec3;
   /** 满权重求解时夹取后的可达目标点。 */
   readonly clampedTarget: Vec3;
+}
+
+/** 世界空间两骨骼 IK 请求。 */
+export interface WorldTwoBoneIkRequest extends TwoBoneIkChain {
+  readonly target: Vec3;
+  readonly bendReference: Vec3;
+  readonly weight: number;
+  readonly characterTransform: RigidTransform;
+}
+
+/** 世界空间两骨骼 IK 结果。 */
+export interface WorldTwoBoneIkResult extends TwoBoneIkResult {
+  readonly characterTransform: RigidTransform;
+  readonly actualWorldEndPosition: Vec3;
+  readonly worldClampedTarget: Vec3;
+}
+
+/** 根运动播放实例配置。 */
+export interface RootMotionPlayerConfig {
+  readonly skeleton: Skeleton;
+  readonly clip: AnimationClip;
+  readonly rootBoneId: string;
+  readonly loop: LoopMode;
+  readonly initialTransform?: RigidTransform;
+  readonly overlay?: OverlayLayer;
+}
+
+/** 根运动播放帧。worldMatrices 为角色空间骨骼矩阵。 */
+export interface RootMotionFrame {
+  readonly characterTransform: RigidTransform;
+  readonly localPose: Map<string, LocalTransform>;
+  readonly worldMatrices: Map<string, import('three').Matrix4>;
+  readonly time: number;
 }

@@ -74,6 +74,62 @@ export function walkClip(): AnimationClip {
   };
 }
 
+/** 带根运动的行走：根每圈绕 Y 旋转 180°，根平移保持在角色原点，姿态循环。 */
+export function rootMotionWalkClip(): AnimationClip {
+  return {
+    name: 'root-walk',
+    duration: 1,
+    tracks: [
+      {
+        boneId: 'hips',
+        translations: [
+          { time: 0, value: [0, 0, 0] },
+          { time: 1, value: [0, 0, 0] },
+        ],
+        rotations: [
+          { time: 0, value: IDENTITY_QUAT },
+          { time: 0.5, value: quatY(Math.PI / 2) },
+          { time: 1, value: quatY(Math.PI) },
+        ],
+      },
+      {
+        boneId: 'leg.L',
+        rotations: [
+          { time: 0, value: quatZ(0.4) },
+          { time: 0.5, value: quatZ(-0.4) },
+          { time: 1, value: quatZ(0.4) },
+        ],
+      },
+      {
+        boneId: 'leg.R',
+        rotations: [
+          { time: 0, value: quatZ(-0.4) },
+          { time: 0.5, value: quatZ(0.4) },
+          { time: 1, value: quatZ(-0.4) },
+        ],
+      },
+    ],
+  };
+}
+
+/** 每圈沿 X 直线前进 1 米，根不旋转；用于世界目标示例。 */
+export function straightRootWalkClip(): AnimationClip {
+  return {
+    name: 'straight-root-walk',
+    duration: 1,
+    tracks: [
+      {
+        boneId: 'hips',
+        translations: [
+          { time: 0, value: [0, 1, 0] },
+          { time: 1, value: [1, 1, 0] },
+        ],
+      },
+      ...walkClip().tracks.filter((track) => track.boneId !== 'hips'),
+    ],
+  };
+}
+
 /** 挥手：仅右臂与右手绕 Z 摆动。 */
 export function waveClip(): AnimationClip {
   return {

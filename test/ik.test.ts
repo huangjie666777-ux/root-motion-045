@@ -125,6 +125,31 @@ test('权重 0 保持原姿态，中间权重连续应用，重复调用稳定',
   assert.deepEqual(again.actualEndPosition, half.actualEndPosition);
 });
 
+test('目标与根重合且参考点共线时优先沿用当前弯曲平面', () => {
+  const input = basePose();
+  const before = evaluatePose(sk, {
+    clip: walkClip(), time: 0.3, loop: 'loop',
+  }, {
+    clip: waveClip(), time: 0.5, loop: 'loop', strength: 1, mask: { 'arm.R': 1 },
+  }).worldMatrices;
+  const root = worldPosition(before, 'spine');
+  const middleBefore = worldPosition(before, 'arm.R').sub(root);
+  const endBefore = worldPosition(before, 'hand.R').sub(root);
+  const axis = endBefore.clone().normalize();
+  const currentSide = middleBefore.clone().addScaledVector(axis, -middleBefore.dot(axis)).normalize();
+  const result = solveTwoBoneIk(sk, input, {
+    rootJointId: 'spine',
+    middleJointId: 'arm.R',
+    endJointId: 'hand.R',
+    target: [root.x, root.y, root.z],
+    bendReference: [root.x + axis.x, root.y + axis.y, root.z + axis.z],
+    weight: 1,
+  });
+  const middleAfter = worldPosition(result.worldMatrices, 'arm.R').sub(root);
+  const sideAfter = middleAfter.clone().addScaledVector(axis, -middleAfter.dot(axis)).normalize();
+  assert.ok(sideAfter.dot(currentSide) > 0.999);
+});
+
 test('IK 结果可直接送入 CPU 蒙皮且多角色互不污染', () => {
   const inputA = basePose();
   const inputB = basePose();
